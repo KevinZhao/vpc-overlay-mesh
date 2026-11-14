@@ -1,0 +1,42 @@
+#!/bin/bash
+# 路线二路由器通用 user_data：所有路由器相同；身份由挂载的数据 ENI 的 tag 决定（overlay-mesh / side / name / index）
+set -eux
+# 开机时常有其他 dnf 进程持有 rpm 锁（T13 实测 A3/B3 因此没装上 iptables），必须重试并校验
+for i in $(seq 1 30); do
+  dnf install -y -q python3-boto3 iperf3 tcpdump ethtool iptables-nft >>/var/log/poc-dnf.log 2>&1 && break
+  sleep 5
+done
+rpm -q python3-boto3 iptables-nft ethtool >>/var/log/poc-dnf.log
+cat >/etc/sysctl.d/90-overlay.conf <<'SYS'
+net.ipv4.ip_forward = 1
+net.ipv4.conf.all.rp_filter = 0
+net.ipv4.conf.default.rp_filter = 0
+net.ipv4.fib_multipath_hash_policy = 1
+SYS
+sysctl --system
+echo '${daemon_b64gz}' | base64 -d | gunzip > /usr/local/sbin/overlay-mesh.py
+echo '${config_b64}' | base64 -d > /etc/overlay-mesh.json
+cat >/etc/systemd/system/overlay-mesh.service <<'UNIT'
+[Unit]
+Description=overlay mesh router (route 2)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/sbin/overlay-mesh.py
+Restart=always
+RestartSec=1
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat >/etc/logrotate.d/overlay-mesh <<'ROT'
+/var/log/overlay-mesh.log {
+  size 50M
+  rotate 10
+  compress
+  copytruncate
+  missingok
+}
+ROT
+systemctl daemon-reload
+systemctl enable --now overlay-mesh

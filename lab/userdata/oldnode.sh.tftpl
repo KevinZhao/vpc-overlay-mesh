@@ -1,0 +1,51 @@
+#!/bin/bash
+# 模拟旧容器网络的 node：netns「pod」里挂 VPC 外地址 ${pod_ip}，node 关闭 src/dst check，VPC RT 写 pod 段 → 本机 ENI
+set -euxo pipefail
+dnf install -y iperf3 tcpdump >/var/log/poc-dnf.log 2>&1 || true
+cat >/etc/sysctl.d/90-poc-node.conf <<'SYS'
+net.ipv4.ip_forward = 1
+net.ipv4.conf.all.rp_filter = 0
+net.ipv4.conf.default.rp_filter = 0
+SYS
+sysctl --system
+
+cat >/usr/local/sbin/pod-up.sh <<'SCRIPT'
+#!/bin/bash
+ip netns add pod 2>/dev/null || true
+ip link add veth-h type veth peer name veth-p 2>/dev/null || true
+ip link set veth-p netns pod 2>/dev/null || true
+ip addr replace 100.64.10.1/24 dev veth-h
+ip link set veth-h mtu 9001 up
+sysctl -qw net.ipv4.conf.veth-h.rp_filter=0
+ip netns exec pod ip addr replace ${pod_ip}/24 dev veth-p
+ip netns exec pod ip link set veth-p mtu 9001 up
+ip netns exec pod ip link set lo up
+ip netns exec pod ip route replace default via 100.64.10.1
+SCRIPT
+chmod +x /usr/local/sbin/pod-up.sh
+
+cat >/etc/systemd/system/pod-netns.service <<'UNIT'
+[Unit]
+Description=PoC legacy-container-network pod netns
+After=network-online.target
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/pod-up.sh
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat >/etc/systemd/system/pod-iperf.service <<'UNIT'
+[Unit]
+Description=iperf3 server inside pod netns
+After=pod-netns.service
+Requires=pod-netns.service
+[Service]
+ExecStart=/usr/sbin/ip netns exec pod /usr/bin/iperf3 -s
+Restart=always
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now pod-netns.service
+systemctl enable --now pod-iperf.service || true

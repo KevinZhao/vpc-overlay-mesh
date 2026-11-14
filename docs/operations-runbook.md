@@ -47,7 +47,7 @@
 
 **前置检查**（每一项都要留记录）：
 
-1. 使用方已经提供 老侧的路由表清单，确认老 node 子网路由表的数量（决定每次切换要改多少张）和现有条目数（配额）。
+1. 使用方已经提供老侧的路由表清单，确认老 node 子网路由表的数量（决定每次切换要改多少张）和现有条目数（配额）。
 2. 跨边界流量的峰值和平均包长已经算出来（来源：CloudWatch 的 EC2 指标：每台实例的 `NetworkIn`/`NetworkOut`（字节）除以 `NetworkPacketsIn`/`NetworkPacketsOut`（包数）就是平均包长，按 workload 汇总取峰值），据此算出每侧台数（[design.md](design.md) §6）。
 3. 双方确认 NACL / SG 方案。数据 ENI 的 SG 全放行，是为了不被连接跟踪（`conntrack_allowance` 不会耗尽，切换后连接状态也不丢）。
 4. **§9 第 1 项（跨账号发现）已经解决。**
@@ -88,7 +88,7 @@ python3 podroute_sync.py ... （不加 --apply）
 
 ### 4.1 计划内维护（打补丁、重启单台）：零丢包
 
-1. `touch /etc/overlay-mesh.drain`：自检不通过，路由器停止应答探测，但**照常转发**。
+1. `touch /etc/overlay-mesh.drain`：自检不通过，路由器在探测回包里带上 `ok=false`（仍然应答），但**照常转发**。
 2. 等约 2 s：同侧存活的路由器接管它负责的入口路由（日志 `TAKE takeover-from-<它>`），对侧把它从多路径中摘除（`TUN … down=<它>`）。
 3. 确认它的数据网卡上已经没有业务流量（`sar -n DEV 1` 或 perfsnap）。
 4. 执行维护操作。
@@ -99,7 +99,7 @@ python3 podroute_sync.py ... （不加 --apply）
 ### 4.2 滚动替换（换 AMI、换机型）：零丢包，每台约 5 min
 
 1. 按 §4.1 drain。
-2. `terraform apply -replace='aws_instance.router_a["A2"]'`：先拆数据 ENI（约 3.5 min），再销毁并新建实例，然后挂回同一块 ENI，IP 不变。
+2. `terraform apply -replace='aws_instance.router["A2"]'`：先拆数据 ENI（约 3.5 min），再销毁并新建实例，然后挂回同一块 ENI，IP 不变。
 3. 新实例通过 user_data 自动安装守护进程，从 ENI tag 认出自己，健康满 10 s 后收回路由。
 4. 确认 `MEMBERS`、`SELF healthy`、`TAKE failback` 这几条日志都出现了，再替换下一台。**不要同一侧同时替换两台。**
 

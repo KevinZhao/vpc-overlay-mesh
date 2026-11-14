@@ -13,7 +13,7 @@
 健康
 - 隧道探测 + 同侧直接探测（UDP 3784/3785）；回包附带：我看到的对侧存活集合、配置哈希。
 - 判定同侧 X 故障：直接探测超时，且新鲜视图里多数票说 X 已失联（≥1 票）；看到的对端不足一半 → ISOLATED，不做入口决策。
-- 自检（fail-closed，不通过就停止应答探测）：ip_forward=1、隧道设备齐全、依赖与 MSS 规则在位、FORWARD 链无 DROP/REJECT、
+- 自检（fail-closed，不通过就在探测回包里带 ok=false，探测本身照常应答）：ip_forward=1、隧道设备齐全、依赖与 MSS 规则在位、FORWARD 链无 DROP/REJECT、
   数据 ENI 的 source/dest check 已关闭、各线程心跳正常、没有 drain 文件。
 
 入口

@@ -86,3 +86,7 @@ terraform destroy
 - 入口按网段分配，不是按流。要在 VPC 路由表这一层按流做负载均衡，只能用 Gateway Load Balancer（每 GB 收费，MTU 8500）。
 - 路由器和 workload 部署在同一个 AZ，不做 AZ 级冗余。
 - 每侧最多 9 台路由器（受 VNI 编号方案限制）。
+
+## 许可证
+
+[MIT-0](LICENSE)（MIT No Attribution）。本项目是个人维护的示例代码，不是 AWS 官方产品，也不代表 AWS 的立场；按现状提供，不附带任何担保。
